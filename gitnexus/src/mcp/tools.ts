@@ -75,10 +75,10 @@ WHEN TO USE: Complex structural queries that search/explore can't answer. READ g
 AFTER THIS: Use context() on result symbols for deeper context.
 
 SCHEMA:
-- Nodes: File, Folder, Function, Class, Interface, Method, CodeElement, Community, Process
+- Nodes: File, Folder, Function, Class, Interface, Method, CodeElement, Community, Process, Contributor, FileContribution
 - Multi-language nodes (use backticks): \`Struct\`, \`Enum\`, \`Trait\`, \`Impl\`, etc.
 - All edges via single CodeRelation table with 'type' property
-- Edge types: CONTAINS, DEFINES, CALLS, IMPORTS, EXTENDS, IMPLEMENTS, MEMBER_OF, STEP_IN_PROCESS
+- Edge types: CONTAINS, DEFINES, CALLS, IMPORTS, EXTENDS, IMPLEMENTS, MEMBER_OF, STEP_IN_PROCESS, CONTRIBUTED_TO, CONTRIBUTED_TO_REPO
 - Edge properties: type (STRING), confidence (DOUBLE), reason (STRING), step (INT32)
 
 EXAMPLES:
@@ -105,6 +105,79 @@ TIPS:
         repo: { type: 'string', description: 'Repository name or path. Omit if only one repo is indexed.' },
       },
       required: ['query'],
+    },
+  },
+  {
+    name: 'contributors',
+    description: `List contributors for a repo with how many files they touched.
+
+WHEN TO USE: Identify who touched a repo and their activity level.
+AFTER THIS: Use contributor_files() or contributor_similar() for deeper analysis.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'Max contributors to return (default: 50)', default: 50 },
+        repo: { type: 'string', description: 'Repository name or path. Omit if only one repo is indexed.' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'contributor_files',
+    description: `List files touched by a contributor in the repo with commit counts and line stats.
+
+WHEN TO USE: For a specific person, find which files they touched most.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        contributor_id: { type: 'string', description: 'Contributor id (from contributors tool)' },
+        limit: { type: 'number', description: 'Max files to return (default: 50)', default: 50 },
+        repo: { type: 'string', description: 'Repository name or path. Omit if only one repo is indexed.' },
+      },
+      required: ['contributor_id'],
+    },
+  },
+  {
+    name: 'contributor_similar',
+    description: `Find similar contributors in a repo by file overlap (Jaccard).
+
+WHEN TO USE: Recommend similar users or find related reviewers.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        contributor_id: { type: 'string', description: 'Contributor id (from contributors tool)' },
+        limit: { type: 'number', description: 'Max similar contributors (default: 10)', default: 10 },
+        repo: { type: 'string', description: 'Repository name or path. Omit if only one repo is indexed.' },
+      },
+      required: ['contributor_id'],
+    },
+  },
+  {
+    name: 'file_contributors',
+    description: `List contributors who touched a file.
+
+WHEN TO USE: Find who worked on a file for ownership/reviewers.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        file_path: { type: 'string', description: 'File path in repo (e.g., src/app.ts)' },
+        repo: { type: 'string', description: 'Repository name or path. Omit if only one repo is indexed.' },
+      },
+      required: ['file_path'],
+    },
+  },
+  {
+    name: 'repo_similar',
+    description: `Find similar repos based on contributor overlap (Jaccard).
+
+WHEN TO USE: Recommend related repos or shared ownership.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'Max similar repos (default: 10)', default: 10 },
+        repo: { type: 'string', description: 'Repository name or path. Omit if only one repo is indexed.' },
+      },
+      required: [],
     },
   },
   {

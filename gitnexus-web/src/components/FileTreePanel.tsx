@@ -14,6 +14,8 @@ import {
   Variable,
   Hash,
   Target,
+  User,
+  FileText,
 } from 'lucide-react';
 import { useAppState } from '../hooks/useAppState';
 import { FILTERABLE_LABELS, NODE_COLORS, ALL_EDGE_TYPES, EDGE_INFO, type EdgeType } from '../lib/constants';
@@ -186,6 +188,8 @@ const getNodeTypeIcon = (label: NodeLabel) => {
     case 'Method': return Braces;
     case 'Interface': return Hash;
     case 'Import': return FileCode;
+    case 'Contributor': return User;
+    case 'FileContribution': return FileText;
     default: return Variable;
   }
 };

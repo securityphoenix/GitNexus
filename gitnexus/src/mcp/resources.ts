@@ -22,6 +22,11 @@ export interface ResourceTemplate {
   mimeType: string;
 }
 
+const yamlQuote = (value: string | number | undefined | null): string => {
+  const raw = value === undefined || value === null ? '' : String(value);
+  return `"${raw.replace(/"/g, '\\"')}"`;
+};
+
 /**
  * Static resources — includes per-repo resources and the global repos list
  */
@@ -83,6 +88,36 @@ export function getResourceTemplates(): ResourceTemplate[] {
       description: 'Step-by-step execution trace',
       mimeType: 'text/yaml',
     },
+    {
+      uriTemplate: 'gitnexus://repo/{name}/contributors',
+      name: 'Repo Contributors',
+      description: 'Contributors and files touched',
+      mimeType: 'text/yaml',
+    },
+    {
+      uriTemplate: 'gitnexus://repo/{name}/contributor/{contributorId}',
+      name: 'Contributor Detail',
+      description: 'Files touched by a contributor with stats',
+      mimeType: 'text/yaml',
+    },
+    {
+      uriTemplate: 'gitnexus://repo/{name}/contributor/{contributorId}/similar',
+      name: 'Similar Contributors',
+      description: 'Contributors with overlapping file activity',
+      mimeType: 'text/yaml',
+    },
+    {
+      uriTemplate: 'gitnexus://repo/{name}/file/{filePath}/contributors',
+      name: 'File Contributors',
+      description: 'Contributors who touched a file',
+      mimeType: 'text/yaml',
+    },
+    {
+      uriTemplate: 'gitnexus://repo/{name}/similar-repos',
+      name: 'Similar Repos',
+      description: 'Repositories with overlapping contributors',
+      mimeType: 'text/yaml',
+    },
   ];
 }
 
@@ -104,6 +139,26 @@ function parseUri(uri: string): { repoName?: string; resourceType: string; param
     }
     if (rest.startsWith('process/')) {
       return { repoName, resourceType: 'process', param: decodeURIComponent(rest.replace('process/', '')) };
+    }
+    if (rest === 'contributors') {
+      return { repoName, resourceType: 'contributors' };
+    }
+    if (rest === 'similar-repos') {
+      return { repoName, resourceType: 'similar-repos' };
+    }
+    if (rest.startsWith('contributor/')) {
+      const remainder = rest.replace('contributor/', '');
+      if (remainder.endsWith('/similar')) {
+        const id = remainder.slice(0, -'/similar'.length);
+        return { repoName, resourceType: 'contributor-similar', param: decodeURIComponent(id) };
+      }
+      return { repoName, resourceType: 'contributor', param: decodeURIComponent(remainder) };
+    }
+    if (rest.startsWith('file/')) {
+      if (rest.endsWith('/contributors')) {
+        const pathPart = rest.slice('file/'.length, -'/contributors'.length);
+        return { repoName, resourceType: 'file-contributors', param: decodeURIComponent(pathPart) };
+      }
     }
 
     return { repoName, resourceType: rest };
@@ -143,6 +198,16 @@ export async function readResource(uri: string, backend: LocalBackend): Promise<
       return getClusterDetailResource(parsed.param!, backend, repoName);
     case 'process':
       return getProcessDetailResource(parsed.param!, backend, repoName);
+    case 'contributors':
+      return getContributorsResource(backend, repoName);
+    case 'contributor':
+      return getContributorDetailResource(parsed.param!, backend, repoName);
+    case 'contributor-similar':
+      return getContributorSimilarResource(parsed.param!, backend, repoName);
+    case 'file-contributors':
+      return getFileContributorsResource(parsed.param!, backend, repoName);
+    case 'similar-repos':
+      return getSimilarReposResource(backend, repoName);
     default:
       throw new Error(`Unknown resource: ${uri}`);
   }
@@ -223,6 +288,11 @@ async function getContextResource(backend: LocalBackend, repoName?: string): Pro
   lines.push('  - rename: Multi-file coordinated rename with confidence tags');
   lines.push('  - cypher: Raw graph queries');
   lines.push('  - list_repos: Discover all indexed repositories');
+  lines.push('  - contributors: List repo contributors and files touched');
+  lines.push('  - contributor_files: Files touched by a contributor');
+  lines.push('  - contributor_similar: Similar contributors by file overlap');
+  lines.push('  - file_contributors: Contributors for a file');
+  lines.push('  - repo_similar: Similar repos by contributor overlap');
   lines.push('');
   lines.push('re_index: Run `npx gitnexus analyze` in terminal if data is stale');
   lines.push('');
@@ -232,6 +302,11 @@ async function getContextResource(backend: LocalBackend, repoName?: string): Pro
   lines.push(`  - gitnexus://repo/${context.projectName}/processes: All execution flows`);
   lines.push(`  - gitnexus://repo/${context.projectName}/cluster/{name}: Module details`);
   lines.push(`  - gitnexus://repo/${context.projectName}/process/{name}: Process trace`);
+  lines.push(`  - gitnexus://repo/${context.projectName}/contributors: Contributors`);
+  lines.push(`  - gitnexus://repo/${context.projectName}/contributor/{id}: Contributor detail`);
+  lines.push(`  - gitnexus://repo/${context.projectName}/contributor/{id}/similar: Similar contributors`);
+  lines.push(`  - gitnexus://repo/${context.projectName}/file/{path}/contributors: File contributors`);
+  lines.push(`  - gitnexus://repo/${context.projectName}/similar-repos: Similar repos`);
   
   return lines.join('\n');
 }
@@ -318,6 +393,8 @@ nodes:
   - CodeElement: Catch-all for other code elements
   - Community: Auto-detected functional area (Leiden algorithm)
   - Process: Execution flow trace
+  - Contributor: Git contributors
+  - FileContribution: Per-file contribution stats
 
 additional_node_types: "Multi-language: Struct, Enum, Macro, Typedef, Union, Namespace, Trait, Impl, TypeAlias, Const, Static, Property, Record, Delegate, Annotation, Constructor, Template, Module (use backticks in queries: \`Struct\`, \`Enum\`, etc.)"
 
@@ -330,6 +407,7 @@ relationships:
   - IMPLEMENTS: Interface implementation
   - MEMBER_OF: Symbol belongs to community
   - STEP_IN_PROCESS: Symbol is step N in process
+  - CONTRIBUTED_TO: Contributor or FileContribution edge
 
 relationship_table: "All relationships use a single CodeRelation table with a 'type' property. Properties: type (STRING), confidence (DOUBLE), reason (STRING), step (INT32)"
 
@@ -470,4 +548,117 @@ async function getSetupResource(backend: LocalBackend): Promise<string> {
   }
   
   return sections.join('\n\n---\n\n');
+}
+
+// ─── Contributor Resources ─────────────────────────────────────────────
+
+async function getContributorsResource(backend: LocalBackend, repoName?: string): Promise<string> {
+  const repo = await backend.resolveRepo(repoName);
+  const contributors = await backend.listContributors(repo, { limit: 50 });
+  if (!contributors || contributors.length === 0) {
+    return 'contributors: []\n# No contributor data found. Run contributor extraction.';
+  }
+
+  const lines: string[] = ['contributors:'];
+  for (const c of contributors) {
+    lines.push(`  - id: ${yamlQuote(c.id)}`);
+    lines.push(`    name: ${yamlQuote(c.name || 'Unknown')}`);
+    if (c.email) lines.push(`    email: ${yamlQuote(c.email)}`);
+    if (c.githubUsername) lines.push(`    github_username: ${yamlQuote(c.githubUsername)}`);
+    if (c.avatarUrl) lines.push(`    avatar_url: ${yamlQuote(c.avatarUrl)}`);
+    lines.push(`    files_touched: ${c.filesTouched ?? 0}`);
+  }
+  return lines.join('\n');
+}
+
+async function getContributorDetailResource(id: string, backend: LocalBackend, repoName?: string): Promise<string> {
+  const repo = await backend.resolveRepo(repoName);
+  const [contributors, files] = await Promise.all([
+    backend.listContributors(repo, { limit: 200 }),
+    backend.listContributorFiles(repo, { contributor_id: id, limit: 100 }),
+  ]);
+
+  const contributor = contributors.find((c: any) => c.id === id);
+  const lines: string[] = ['contributor:'];
+  lines.push(`  id: ${yamlQuote(id)}`);
+  if (contributor) {
+    lines.push(`  name: ${yamlQuote(contributor.name || 'Unknown')}`);
+    if (contributor.email) lines.push(`  email: ${yamlQuote(contributor.email)}`);
+    if (contributor.githubUsername) lines.push(`  github_username: ${yamlQuote(contributor.githubUsername)}`);
+    if (contributor.avatarUrl) lines.push(`  avatar_url: ${yamlQuote(contributor.avatarUrl)}`);
+    lines.push(`  files_touched: ${contributor.filesTouched ?? 0}`);
+  }
+
+  lines.push('');
+  lines.push('files:');
+  if (!files || files.length === 0) {
+    lines.push('  []');
+    return lines.join('\n');
+  }
+
+  for (const f of files) {
+    lines.push(`  - file: ${yamlQuote(f.filePath)}`);
+    lines.push(`    commits: ${f.commits ?? 0}`);
+    lines.push(`    lines_added: ${f.linesAdded ?? 0}`);
+    lines.push(`    lines_deleted: ${f.linesDeleted ?? 0}`);
+  }
+  return lines.join('\n');
+}
+
+async function getContributorSimilarResource(id: string, backend: LocalBackend, repoName?: string): Promise<string> {
+  const repo = await backend.resolveRepo(repoName);
+  const similar = await backend.listSimilarContributors(repo, { contributor_id: id, limit: 10 });
+  const lines: string[] = ['similar_contributors:'];
+
+  if (!similar || similar.length === 0) {
+    lines.push('  []');
+    return lines.join('\n');
+  }
+
+  for (const c of similar) {
+    lines.push(`  - id: ${yamlQuote(c.id)}`);
+    lines.push(`    name: ${yamlQuote(c.name || 'Unknown')}`);
+    if (c.email) lines.push(`    email: ${yamlQuote(c.email)}`);
+    if (c.githubUsername) lines.push(`    github_username: ${yamlQuote(c.githubUsername)}`);
+    lines.push(`    shared_files: ${c.sharedFiles ?? 0}`);
+    lines.push(`    similarity: ${Number(c.similarity ?? 0).toFixed(3)}`);
+  }
+  return lines.join('\n');
+}
+
+async function getFileContributorsResource(filePath: string, backend: LocalBackend, repoName?: string): Promise<string> {
+  const repo = await backend.resolveRepo(repoName);
+  const contributors = await backend.listFileContributors(repo, { file_path: filePath });
+  const lines: string[] = [`file: ${yamlQuote(filePath)}`, 'contributors:'];
+
+  if (!contributors || contributors.length === 0) {
+    lines.push('  []');
+    return lines.join('\n');
+  }
+
+  for (const c of contributors) {
+    lines.push(`  - id: ${yamlQuote(c.id)}`);
+    lines.push(`    name: ${yamlQuote(c.name || 'Unknown')}`);
+    if (c.email) lines.push(`    email: ${yamlQuote(c.email)}`);
+    if (c.githubUsername) lines.push(`    github_username: ${yamlQuote(c.githubUsername)}`);
+  }
+  return lines.join('\n');
+}
+
+async function getSimilarReposResource(backend: LocalBackend, repoName?: string): Promise<string> {
+  const repo = await backend.resolveRepo(repoName);
+  const similar = await backend.listSimilarRepos(repo, { limit: 10 });
+  const lines: string[] = ['similar_repos:'];
+
+  if (!similar || similar.length === 0) {
+    lines.push('  []');
+    return lines.join('\n');
+  }
+
+  for (const r of similar) {
+    lines.push(`  - name: ${yamlQuote(r.name)}`);
+    lines.push(`    shared_contributors: ${r.sharedContributors ?? 0}`);
+    lines.push(`    similarity: ${Number(r.similarity ?? 0).toFixed(3)}`);
+  }
+  return lines.join('\n');
 }

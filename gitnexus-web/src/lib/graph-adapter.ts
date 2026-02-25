@@ -68,6 +68,10 @@ const getNodeMass = (nodeType: NodeLabel, nodeCount: number): number => {
     case 'Function':
     case 'Method':
       return 2 * baseMassMultiplier;   // Light
+    case 'Contributor':
+      return 4 * baseMassMultiplier;   // Similar to files
+    case 'FileContribution':
+      return 1.5 * baseMassMultiplier; // Small leaf nodes
     default:
       return 1;  // Default mass
   }
@@ -294,6 +298,8 @@ export const knowledgeGraphToGraphology = (
     // TYPE RELATIONSHIPS - Warm colors (OOP)
     EXTENDS: { color: '#c2410c', sizeMultiplier: 1.0 },     // Orange - extension
     IMPLEMENTS: { color: '#be185d', sizeMultiplier: 0.9 },  // Pink - interface implementation
+    // CONTRIBUTIONS - Green
+    CONTRIBUTED_TO: { color: '#16a34a', sizeMultiplier: 0.6 },
   };
   
   knowledgeGraph.relationships.forEach((rel) => {

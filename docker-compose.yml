@@ -1,0 +1,59 @@
+services:
+  # GitNexus CLI/MCP Server
+  gitnexus-server:
+    build:
+      context: ./gitnexus
+      dockerfile: Dockerfile
+    container_name: gitnexus-server
+    ports:
+      - "4747:4747"
+    volumes:
+      # Mount your repositories here for indexing
+      - ./repos:/repos
+      # Persist indexed data
+      - gitnexus-data:/root/.gitnexus
+    command: ["node", "dist/cli/index.js", "serve"]
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    networks:
+      - gitnexus-network
+
+  # GitNexus Web UI
+  gitnexus-web:
+    build:
+      context: ./gitnexus-web
+      dockerfile: Dockerfile
+    container_name: gitnexus-web
+    ports:
+      - "8080:80"
+    environment:
+      # Point to the backend server for bridge mode
+      - VITE_BACKEND_URL=http://gitnexus-server:4747
+    depends_on:
+      - gitnexus-server
+    restart: unless-stopped
+    networks:
+      - gitnexus-network
+
+volumes:
+  gitnexus-data:
+    driver: local
+
+networks:
+  gitnexus-network:
+    driver: bridge
+
+# Usage:
+# Start all services: docker-compose up -d
+# Stop all services: docker-compose down
+# View logs: docker-compose logs -f
+# Rebuild: docker-compose up -d --build
+#
+# Access:
+# - Web UI: http://localhost:8080
+# - API Server: http://localhost:4747
+#
+# To index a repository:
+# 1. Place your repo in ./repos/your-project
+# 2. Run: docker-compose exec gitnexus-server npx gitnexus analyze /repos/your-project

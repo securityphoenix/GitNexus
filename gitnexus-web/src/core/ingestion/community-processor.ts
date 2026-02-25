@@ -10,7 +10,7 @@
 
 import Graph from 'graphology';
 import leiden from '../../vendor/leiden/index.js';
-import { KnowledgeGraph, NodeLabel } from '../graph/types';
+import { KnowledgeGraph, NodeLabel } from '../graph/types.js';
 
 // ============================================================================
 // TYPES

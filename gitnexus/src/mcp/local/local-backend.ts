@@ -38,7 +38,7 @@ function isTestFilePath(filePath: string): boolean {
 /** Valid KuzuDB node labels for safe Cypher query construction */
 const VALID_NODE_LABELS = new Set([
   'File', 'Folder', 'Function', 'Class', 'Interface', 'Method', 'CodeElement',
-  'Community', 'Process', 'Struct', 'Enum', 'Macro', 'Typedef', 'Union',
+  'Community', 'Process', 'Contributor', 'FileContribution', 'Struct', 'Enum', 'Macro', 'Typedef', 'Union',
   'Namespace', 'Trait', 'Impl', 'TypeAlias', 'Const', 'Static', 'Property',
   'Record', 'Delegate', 'Annotation', 'Constructor', 'Template', 'Module',
 ]);
@@ -291,6 +291,16 @@ export class LocalBackend {
         return this.detectChanges(repo, params);
       case 'rename':
         return this.rename(repo, params);
+      case 'contributors':
+        return this.listContributors(repo, params);
+      case 'contributor_files':
+        return this.listContributorFiles(repo, params);
+      case 'contributor_similar':
+        return this.listSimilarContributors(repo, params);
+      case 'file_contributors':
+        return this.listFileContributors(repo, params);
+      case 'repo_similar':
+        return this.listSimilarRepos(repo, params);
       // Legacy aliases for backwards compatibility
       case 'search':
         return this.query(repo, params);
@@ -1439,6 +1449,145 @@ export class LocalBackend {
       affected_modules: affectedModules,
       byDepth: grouped,
     };
+  }
+
+  // ─── Contributor Tools ───────────────────────────────────────────
+
+  async listContributors(repo: RepoHandle, params: { limit?: number }): Promise<any> {
+    await this.ensureInitialized(repo.id);
+    const limit = params.limit || 50;
+    const escapedRepo = repo.name.replace(/'/g, "''");
+    const rows = await executeQuery(repo.id, `
+      MATCH (c:Contributor)-[:CodeRelation {type: 'CONTRIBUTED_TO'}]->(fc:FileContribution {repoName: '${escapedRepo}'})
+      RETURN c.id AS id, c.name AS name, c.email AS email, c.githubUsername AS githubUsername, c.avatarUrl AS avatarUrl, COUNT(DISTINCT fc.filePath) AS filesTouched
+      ORDER BY filesTouched DESC
+      LIMIT ${limit}
+    `);
+    return rows.map((row: any) => ({
+      id: row.id || row[0],
+      name: row.name || row[1],
+      email: row.email || row[2],
+      githubUsername: row.githubUsername || row[3],
+      avatarUrl: row.avatarUrl || row[4],
+      filesTouched: Number(row.filesTouched || row[5] || 0),
+    }));
+  }
+
+  async listContributorFiles(repo: RepoHandle, params: { contributor_id: string; limit?: number }): Promise<any> {
+    await this.ensureInitialized(repo.id);
+    const limit = params.limit || 50;
+    const contributorId = params.contributor_id.replace(/'/g, "''");
+    const escapedRepo = repo.name.replace(/'/g, "''");
+    const rows = await executeQuery(repo.id, `
+      MATCH (c:Contributor {id: '${contributorId}'})-[:CodeRelation {type: 'CONTRIBUTED_TO'}]->(fc:FileContribution {repoName: '${escapedRepo}'})
+      RETURN fc.filePath AS filePath, fc.commits AS commits, fc.linesAdded AS linesAdded, fc.linesDeleted AS linesDeleted
+      ORDER BY commits DESC
+      LIMIT ${limit}
+    `);
+    return rows.map((row: any) => ({
+      filePath: row.filePath || row[0],
+      commits: Number(row.commits || row[1] || 0),
+      linesAdded: Number(row.linesAdded || row[2] || 0),
+      linesDeleted: Number(row.linesDeleted || row[3] || 0),
+    }));
+  }
+
+  async listSimilarContributors(repo: RepoHandle, params: { contributor_id: string; limit?: number }): Promise<any> {
+    await this.ensureInitialized(repo.id);
+    const limit = params.limit || 10;
+    const contributorId = params.contributor_id.replace(/'/g, "''");
+    const escapedRepo = repo.name.replace(/'/g, "''");
+
+    const rows = await executeQuery(repo.id, `
+      MATCH (c1:Contributor {id: '${contributorId}'})-[:CodeRelation {type: 'CONTRIBUTED_TO'}]->(fc1:FileContribution {repoName: '${escapedRepo}'})
+      MATCH (c2:Contributor)-[:CodeRelation {type: 'CONTRIBUTED_TO'}]->(fc2:FileContribution {repoName: '${escapedRepo}'})
+      WHERE c1.id <> c2.id AND fc1.filePath = fc2.filePath
+      WITH c1, c2, COUNT(DISTINCT fc1.filePath) AS sharedFiles
+      MATCH (c1)-[:CodeRelation {type: 'CONTRIBUTED_TO'}]->(fc1all:FileContribution {repoName: '${escapedRepo}'})
+      WITH c1, c2, sharedFiles, COUNT(DISTINCT fc1all.filePath) AS c1Files
+      MATCH (c2)-[:CodeRelation {type: 'CONTRIBUTED_TO'}]->(fc2all:FileContribution {repoName: '${escapedRepo}'})
+      WITH c2, sharedFiles, c1Files, COUNT(DISTINCT fc2all.filePath) AS c2Files
+      RETURN c2.id AS id,
+             c2.name AS name,
+             c2.email AS email,
+             c2.githubUsername AS githubUsername,
+             c2.avatarUrl AS avatarUrl,
+             sharedFiles AS sharedFiles,
+             (sharedFiles * 1.0 / (c1Files + c2Files - sharedFiles)) AS similarity
+      ORDER BY similarity DESC
+      LIMIT ${limit}
+    `);
+
+    return rows.map((row: any) => ({
+      id: row.id || row[0],
+      name: row.name || row[1],
+      email: row.email || row[2],
+      githubUsername: row.githubUsername || row[3],
+      avatarUrl: row.avatarUrl || row[4],
+      sharedFiles: Number(row.sharedFiles || row[5] || 0),
+      similarity: Number(row.similarity || row[6] || 0),
+    }));
+  }
+
+  async listFileContributors(repo: RepoHandle, params: { file_path: string }): Promise<any> {
+    await this.ensureInitialized(repo.id);
+    const filePath = params.file_path.replace(/'/g, "''");
+    const rows = await executeQuery(repo.id, `
+      MATCH (c:Contributor)-[:CodeRelation {type: 'CONTRIBUTED_TO'}]->(f:File {filePath: '${filePath}'})
+      RETURN c.id AS id, c.name AS name, c.email AS email, c.githubUsername AS githubUsername, c.avatarUrl AS avatarUrl
+      ORDER BY c.name
+    `);
+    return rows.map((row: any) => ({
+      id: row.id || row[0],
+      name: row.name || row[1],
+      email: row.email || row[2],
+      githubUsername: row.githubUsername || row[3],
+      avatarUrl: row.avatarUrl || row[4],
+    }));
+  }
+
+  async listSimilarRepos(repo: RepoHandle, params: { limit?: number }): Promise<any> {
+    await this.ensureInitialized(repo.id);
+    const limit = params.limit || 10;
+    const targetIds = await this.getRepoContributorIds(repo);
+    if (targetIds.size === 0) return [];
+
+    const results: Array<{ name: string; sharedContributors: number; similarity: number }> = [];
+    for (const handle of this.repos.values()) {
+      if (handle.id === repo.id) continue;
+      await this.ensureInitialized(handle.id);
+      const ids = await this.getRepoContributorIds(handle);
+      if (ids.size === 0) continue;
+
+      let shared = 0;
+      for (const id of ids) {
+        if (targetIds.has(id)) shared += 1;
+      }
+      if (shared === 0) continue;
+      const similarity = shared / (targetIds.size + ids.size - shared);
+      results.push({
+        name: handle.name,
+        sharedContributors: shared,
+        similarity,
+      });
+    }
+
+    return results.sort((a, b) => b.similarity - a.similarity).slice(0, limit);
+  }
+
+  private async getRepoContributorIds(repo: RepoHandle): Promise<Set<string>> {
+    await this.ensureInitialized(repo.id);
+    const escapedRepo = repo.name.replace(/'/g, "''");
+    const rows = await executeQuery(repo.id, `
+      MATCH (c:Contributor)-[:CodeRelation {type: 'CONTRIBUTED_TO'}]->(fc:FileContribution {repoName: '${escapedRepo}'})
+      RETURN DISTINCT c.id AS id
+    `);
+    const set = new Set<string>();
+    for (const row of rows) {
+      const id = String(row.id || row[0] || '');
+      if (id) set.add(id);
+    }
+    return set;
   }
 
   // ─── Direct Graph Queries (for resources.ts) ────────────────────

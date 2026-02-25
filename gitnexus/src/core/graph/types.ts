@@ -15,7 +15,9 @@ export type NodeLabel =
   | 'Type'
   | 'CodeElement'
   | 'Community'
-  | 'Process';
+  | 'Process'
+  | 'Contributor'
+  | 'FileContribution';
 
 
 export type NodeProperties = {
@@ -25,6 +27,15 @@ export type NodeProperties = {
   endLine?: number,
   language?: string,
   isExported?: boolean,
+  // Contributor-specific properties
+  email?: string,
+  githubUsername?: string,
+  avatarUrl?: string,
+  // File contribution properties
+  repoName?: string,
+  commits?: number,
+  linesAdded?: number,
+  linesDeleted?: number,
   // Community-specific properties
   heuristicLabel?: string,
   cohesion?: number,
@@ -56,6 +67,8 @@ export type RelationshipType =
   | 'EXTENDS'
   | 'MEMBER_OF'
   | 'STEP_IN_PROCESS'
+  | 'CONTRIBUTED_TO'
+  | 'CONTRIBUTED_TO_REPO'
 
 export interface GraphNode {
   id:  string,

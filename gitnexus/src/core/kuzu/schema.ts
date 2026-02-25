@@ -14,6 +14,7 @@
 // ============================================================================
 export const NODE_TABLES = [
   'File', 'Folder', 'Function', 'Class', 'Interface', 'Method', 'CodeElement', 'Community', 'Process',
+  'Contributor', 'FileContribution',
   // Multi-language support
   'Struct', 'Enum', 'Macro', 'Typedef', 'Union', 'Namespace', 'Trait', 'Impl',
   'TypeAlias', 'Const', 'Static', 'Property', 'Record', 'Delegate', 'Annotation', 'Constructor', 'Template', 'Module'
@@ -26,7 +27,18 @@ export type NodeTableName = typeof NODE_TABLES[number];
 export const REL_TABLE_NAME = 'CodeRelation';
 
 // Valid relation types
-export const REL_TYPES = ['CONTAINS', 'DEFINES', 'IMPORTS', 'CALLS', 'EXTENDS', 'IMPLEMENTS', 'MEMBER_OF', 'STEP_IN_PROCESS'] as const;
+export const REL_TYPES = [
+  'CONTAINS',
+  'DEFINES',
+  'IMPORTS',
+  'CALLS',
+  'EXTENDS',
+  'IMPLEMENTS',
+  'MEMBER_OF',
+  'STEP_IN_PROCESS',
+  'CONTRIBUTED_TO',
+  'CONTRIBUTED_TO_REPO',
+] as const;
 export type RelType = typeof REL_TYPES[number];
 
 // ============================================================================
@@ -146,6 +158,31 @@ CREATE NODE TABLE Process (
   communities STRING[],
   entryPointId STRING,
   terminalId STRING,
+  PRIMARY KEY (id)
+)`;
+
+// ============================================================================
+// CONTRIBUTOR + FILE CONTRIBUTION TABLES
+// ============================================================================
+
+export const CONTRIBUTOR_SCHEMA = `
+CREATE NODE TABLE Contributor (
+  id STRING,
+  name STRING,
+  email STRING,
+  githubUsername STRING,
+  avatarUrl STRING,
+  PRIMARY KEY (id)
+)`;
+
+export const FILE_CONTRIBUTION_SCHEMA = `
+CREATE NODE TABLE FileContribution (
+  id STRING,
+  repoName STRING,
+  filePath STRING,
+  commits INT32,
+  linesAdded INT64,
+  linesDeleted INT64,
   PRIMARY KEY (id)
 )`;
 
@@ -340,6 +377,10 @@ CREATE REL TABLE ${REL_TABLE_NAME} (
   FROM \`Annotation\` TO Process,
   FROM \`Template\` TO Process,
   FROM CodeElement TO Process,
+  FROM Contributor TO File,
+  FROM Contributor TO FileContribution,
+  FROM Contributor TO Process,
+  FROM FileContribution TO File,
   type STRING,
   confidence DOUBLE,
   reason STRING,
@@ -381,6 +422,8 @@ export const NODE_SCHEMA_QUERIES = [
   CODE_ELEMENT_SCHEMA,
   COMMUNITY_SCHEMA,
   PROCESS_SCHEMA,
+  CONTRIBUTOR_SCHEMA,
+  FILE_CONTRIBUTION_SCHEMA,
   // Multi-language support
   STRUCT_SCHEMA,
   ENUM_SCHEMA,

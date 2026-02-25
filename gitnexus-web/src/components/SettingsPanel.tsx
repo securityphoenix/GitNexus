@@ -15,6 +15,8 @@ interface SettingsPanelProps {
   backendUrl?: string;
   isBackendConnected?: boolean;
   onBackendUrlChange?: (url: string) => void;
+  backendApiKey?: string;
+  onBackendApiKeyChange?: (apiKey: string) => void;
 }
 
 /**
@@ -212,7 +214,16 @@ const checkOllamaStatus = async (baseUrl: string): Promise<{ ok: boolean; error:
   }
 };
 
-export const SettingsPanel = ({ isOpen, onClose, onSettingsSaved, backendUrl, isBackendConnected, onBackendUrlChange }: SettingsPanelProps) => {
+export const SettingsPanel = ({
+  isOpen,
+  onClose,
+  onSettingsSaved,
+  backendUrl,
+  isBackendConnected,
+  onBackendUrlChange,
+  backendApiKey,
+  onBackendApiKeyChange,
+}: SettingsPanelProps) => {
   const [settings, setSettings] = useState<LLMSettings>(loadSettings);
   const [showApiKey, setShowApiKey] = useState<Record<string, boolean>>({});
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
@@ -340,6 +351,33 @@ export const SettingsPanel = ({ isOpen, onClose, onSettingsSaved, backendUrl, is
                 <p className="text-xs text-text-muted">
                   Run <code className="px-1 py-0.5 bg-elevated rounded">gitnexus serve</code> to start the local server
                 </p>
+                {onBackendApiKeyChange && (
+                  <div className="space-y-2 pt-2">
+                    <label className="flex items-center gap-2 text-sm font-medium text-text-secondary">
+                      <Key className="w-4 h-4" />
+                      API Key
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showApiKey['backend'] ? 'text' : 'password'}
+                        value={backendApiKey ?? ''}
+                        onChange={(e) => onBackendApiKeyChange(e.target.value)}
+                        placeholder="Enter GitNexus API key (optional)"
+                        className="w-full px-4 py-3 pr-12 bg-elevated border border-border-subtle rounded-xl text-text-primary placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none transition-all font-mono text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => toggleApiKeyVisibility('backend')}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-text-muted hover:text-text-primary transition-colors"
+                      >
+                        {showApiKey['backend'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    <p className="text-xs text-text-muted">
+                      Needed to access contributor and GitHub endpoints if auth is enabled.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}

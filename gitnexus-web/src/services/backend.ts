@@ -22,12 +22,19 @@ export interface BackendRepo {
 // ── Configuration ──────────────────────────────────────────────────────────
 
 let backendUrl = 'http://localhost:4747';
+let backendApiKey = '';
 
 export const setBackendUrl = (url: string): void => {
   backendUrl = url.replace(/\/$/, '');
 };
 
 export const getBackendUrl = (): string => backendUrl;
+
+export const setBackendApiKey = (apiKey: string): void => {
+  backendApiKey = apiKey.trim();
+};
+
+export const getBackendApiKey = (): string => backendApiKey;
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -47,7 +54,11 @@ const fetchWithTimeout = async (
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch(url, { ...init, signal: controller.signal });
+    const headers = new Headers(init.headers || {});
+    if (backendApiKey && !headers.has('Authorization')) {
+      headers.set('Authorization', `Bearer ${backendApiKey}`);
+    }
+    const response = await fetch(url, { ...init, headers, signal: controller.signal });
     return response;
   } catch (error: unknown) {
     if (error instanceof DOMException && error.name === 'AbortError') {
@@ -224,6 +235,106 @@ export const fetchClusterDetail = async (
 ): Promise<unknown> => {
   const response = await fetchWithTimeout(
     `${backendUrl}/api/cluster?repo=${encodeURIComponent(repo)}&name=${encodeURIComponent(name)}`,
+  );
+  await assertOk(response);
+  return response.json();
+};
+
+// ── Contributor endpoints ───────────────────────────────────────────────────
+
+export interface BackendContributor {
+  id: string;
+  name: string;
+  email: string;
+  githubUsername?: string;
+  avatarUrl?: string;
+  filesTouched?: number;
+}
+
+export interface BackendContributorFile {
+  filePath: string;
+  commits: number;
+  linesAdded: number;
+  linesDeleted: number;
+}
+
+export interface SimilarContributor {
+  id: string;
+  name: string;
+  email: string;
+  githubUsername?: string;
+  avatarUrl?: string;
+  sharedFiles: number;
+  similarity: number;
+}
+
+export interface SimilarRepo {
+  name: string;
+  sharedContributors: number;
+  similarity: number;
+}
+
+export const extractContributors = async (
+  repo: string,
+  payload?: { githubOwner?: string; githubRepo?: string; githubToken?: string },
+): Promise<{ contributors: number; fileContributions: number }> => {
+  const response = await fetchWithTimeout(`${backendUrl}/api/contributors/extract`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repo, ...payload }),
+  }, 60_000);
+  await assertOk(response);
+  return response.json();
+};
+
+export const fetchContributors = async (repo: string): Promise<BackendContributor[]> => {
+  const response = await fetchWithTimeout(
+    `${backendUrl}/api/contributors?repo=${encodeURIComponent(repo)}`,
+  );
+  await assertOk(response);
+  return response.json();
+};
+
+export const fetchContributorDetail = async (
+  repo: string,
+  contributorId: string,
+): Promise<{ contributor: BackendContributor | null; files: BackendContributorFile[] }> => {
+  const response = await fetchWithTimeout(
+    `${backendUrl}/api/contributor/${encodeURIComponent(contributorId)}?repo=${encodeURIComponent(repo)}`,
+  );
+  await assertOk(response);
+  return response.json();
+};
+
+export const fetchSimilarContributors = async (
+  repo: string,
+  contributorId: string,
+  limit = 10,
+): Promise<SimilarContributor[]> => {
+  const response = await fetchWithTimeout(
+    `${backendUrl}/api/contributor/${encodeURIComponent(contributorId)}/similar?repo=${encodeURIComponent(repo)}&limit=${limit}`,
+  );
+  await assertOk(response);
+  return response.json();
+};
+
+export const fetchFileContributors = async (
+  repo: string,
+  filePath: string,
+): Promise<BackendContributor[]> => {
+  const response = await fetchWithTimeout(
+    `${backendUrl}/api/file/contributors?repo=${encodeURIComponent(repo)}&path=${encodeURIComponent(filePath)}`,
+  );
+  await assertOk(response);
+  return response.json();
+};
+
+export const fetchSimilarRepos = async (
+  repo: string,
+  limit = 10,
+): Promise<SimilarRepo[]> => {
+  const response = await fetchWithTimeout(
+    `${backendUrl}/api/repo/${encodeURIComponent(repo)}/similar-repos?limit=${limit}`,
   );
   await assertOk(response);
   return response.json();

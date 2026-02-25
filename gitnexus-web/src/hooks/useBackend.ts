@@ -4,6 +4,8 @@ import {
   fetchRepos,
   setBackendUrl as setServiceUrl,
   getBackendUrl,
+  setBackendApiKey as setServiceApiKey,
+  getBackendApiKey,
   type BackendRepo,
 } from '../services/backend';
 
@@ -11,6 +13,7 @@ import {
 
 const LS_URL_KEY = 'gitnexus-backend-url';
 const LS_REPO_KEY = 'gitnexus-backend-repo';
+const LS_API_KEY = 'gitnexus-backend-api-key';
 const DEFAULT_URL = 'http://localhost:4747';
 
 // ── Debounce delay ───────────────────────────────────────────────────────────
@@ -34,6 +37,10 @@ export interface UseBackendResult {
 
   /** Change the backend URL, persist to localStorage, and re-probe */
   setBackendUrl: (url: string) => void;
+  /** Backend API key for authenticated endpoints */
+  backendApiKey: string;
+  /** Change the backend API key, persist to localStorage */
+  setBackendApiKey: (apiKey: string) => void;
   /** Select a repo (persisted to localStorage) */
   selectRepo: (name: string) => void;
   /** Manually re-check the backend connection */
@@ -51,6 +58,13 @@ export function useBackend(): UseBackendResult {
       return localStorage.getItem(LS_URL_KEY) ?? DEFAULT_URL;
     } catch {
       return DEFAULT_URL;
+    }
+  });
+  const [backendApiKey, setApiKeyState] = useState<string>(() => {
+    try {
+      return localStorage.getItem(LS_API_KEY) ?? '';
+    } catch {
+      return '';
     }
   });
 
@@ -138,6 +152,16 @@ export function useBackend(): UseBackendResult {
     [probe],
   );
 
+  const setBackendApiKey = useCallback((apiKey: string) => {
+    setApiKeyState(apiKey);
+    setServiceApiKey(apiKey);
+    try {
+      localStorage.setItem(LS_API_KEY, apiKey);
+    } catch {
+      // localStorage may be unavailable
+    }
+  }, []);
+
   // ── selectRepo: persist and update state ─────────────────────────────────
 
   const selectRepo = useCallback((name: string) => {
@@ -170,6 +194,7 @@ export function useBackend(): UseBackendResult {
   useEffect(() => {
     // Ensure the service module is in sync with the persisted URL
     setServiceUrl(backendUrl);
+    setServiceApiKey(getBackendApiKey() || backendApiKey);
     void probe();
 
     // Cleanup debounce timer on unmount
@@ -186,9 +211,11 @@ export function useBackend(): UseBackendResult {
     isConnected,
     isProbing,
     backendUrl,
+    backendApiKey,
     repos,
     selectedRepo,
     setBackendUrl,
+    setBackendApiKey,
     selectRepo,
     probe,
     disconnect,

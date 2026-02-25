@@ -11,6 +11,8 @@ import { augmentCommand } from './augment.js';
 import { wikiCommand } from './wiki.js';
 import { queryCommand, contextCommand, impactCommand, cypherCommand } from './tool.js';
 import { evalServerCommand } from './eval-server.js';
+import { githubLoginCommand, githubScanCommand } from './github.js';
+import { keysCreateCommand, keysListCommand } from './keys.js';
 const program = new Command();
 
 program
@@ -68,6 +70,44 @@ program
   .option('--concurrency <n>', 'Parallel LLM calls (default: 3)', '3')
   .option('--gist', 'Publish wiki as a public GitHub Gist after generation')
   .action(wikiCommand);
+
+// ─── GitHub Integration ───────────────────────────────────────────
+const github = program
+  .command('github')
+  .description('GitHub integration for scanning repositories');
+
+github
+  .command('login')
+  .description('Store GitHub PAT for user/org/repos')
+  .option('-t, --type <type>', 'Credential type: user | org | repos', 'user')
+  .option('-o, --owner <owner>', 'GitHub owner (username, org, or owner/repo)')
+  .option('--token <token>', 'GitHub PAT (or set GITHUB_TOKEN)')
+  .action(githubLoginCommand);
+
+github
+  .command('scan <target>')
+  .description('Scan GitHub repos and index them locally')
+  .option('-t, --type <type>', 'Scan type: user | org | repos', 'user')
+  .option('--token <token>', 'GitHub PAT (optional)')
+  .option('-f, --force', 'Force re-index even if up to date')
+  .action(githubScanCommand);
+
+// ─── API Keys ─────────────────────────────────────────────────────
+const keys = program
+  .command('keys')
+  .description('Manage GitNexus API keys');
+
+keys
+  .command('create')
+  .description('Create a new API key')
+  .option('-n, --name <name>', 'Key name')
+  .option('-s, --scopes <scopes>', 'Comma-separated scopes (read,write,admin)', 'read')
+  .action(keysCreateCommand);
+
+keys
+  .command('list')
+  .description('List existing API keys')
+  .action(keysListCommand);
 
 program
   .command('augment <pattern>')

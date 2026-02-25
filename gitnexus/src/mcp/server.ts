@@ -62,6 +62,17 @@ function getNextStepHint(toolName: string, args: Record<string, any> | undefined
     case 'cypher':
       return `\n\n---\n**Next:** To explore a result symbol, use context({name: "<name>"${repoParam}}). For schema reference, READ gitnexus://repo/${repoPath}/schema.`;
 
+    case 'contributors':
+      return `\n\n---\n**Next:** For a contributor, use contributor_files({contributor_id: "<id>"${repoParam}}) or contributor_similar({contributor_id: "<id>"${repoParam}}).`;
+    case 'contributor_files':
+      return `\n\n---\n**Next:** Use file_contributors({file_path: "<path>"${repoParam}}) to see other contributors on a file.`;
+    case 'contributor_similar':
+      return `\n\n---\n**Next:** Use contributors(${repoParam ? `{repo: "${repo}"}` : ''}) to list the repo's top contributors.`;
+    case 'file_contributors':
+      return `\n\n---\n**Next:** Use contributors(${repoParam ? `{repo: "${repo}"}` : ''}) to see file coverage across the repo.`;
+    case 'repo_similar':
+      return `\n\n---\n**Next:** Use contributors(${repoParam ? `{repo: "${repo}"}` : ''}) to compare contributor overlap details.`;
+
     // Legacy tool names — still return useful hints
     case 'search':
       return `\n\n---\n**Next:** To understand a result in context, use context({name: "<symbol_name>"${repoParam}}).`;

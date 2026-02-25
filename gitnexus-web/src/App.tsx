@@ -250,6 +250,8 @@ const AppContent = () => {
         backendUrl={backend.backendUrl}
         isBackendConnected={backend.isConnected}
         onBackendUrlChange={backend.setBackendUrl}
+        backendApiKey={backend.backendApiKey}
+        onBackendApiKeyChange={backend.setBackendApiKey}
       />
 
     </div>

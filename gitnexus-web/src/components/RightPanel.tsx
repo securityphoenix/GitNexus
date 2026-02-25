@@ -1,13 +1,14 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Send, Square, Sparkles, User,
-  PanelRightClose, Loader2, AlertTriangle, GitBranch
+  PanelRightClose, Loader2, AlertTriangle, GitBranch, Users
 } from 'lucide-react';
 import { useAppState } from '../hooks/useAppState';
 import { ToolCallCard } from './ToolCallCard';
 import { isProviderConfigured } from '../core/llm/settings-service';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { ProcessesPanel } from './ProcessesPanel';
+import { ContributorsPanel } from './ContributorsPanel';
 export const RightPanel = () => {
   const {
     isRightPanelOpen,
@@ -28,7 +29,7 @@ export const RightPanel = () => {
   } = useAppState();
 
   const [chatInput, setChatInput] = useState('');
-  const [activeTab, setActiveTab] = useState<'chat' | 'processes'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'processes' | 'contributors'>('chat');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -238,6 +239,18 @@ export const RightPanel = () => {
               NEW
             </span>
           </button>
+
+          {/* Contributors Tab */}
+          <button
+            onClick={() => setActiveTab('contributors')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === 'contributors'
+              ? 'bg-accent/15 text-accent'
+              : 'text-text-muted hover:text-text-primary hover:bg-hover'
+              }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>Contributors</span>
+          </button>
         </div>
 
         {/* Close button */}
@@ -254,6 +267,13 @@ export const RightPanel = () => {
       {activeTab === 'processes' && (
         <div className="flex-1 flex flex-col overflow-hidden">
           <ProcessesPanel />
+        </div>
+      )}
+
+      {/* Contributors Tab */}
+      {activeTab === 'contributors' && (
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <ContributorsPanel />
         </div>
       )}
 

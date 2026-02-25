@@ -19,6 +19,8 @@ export const NODE_COLORS: Record<NodeLabel, string> = {
   CodeElement: '#64748b', // Slate - muted
   Community: '#818cf8',  // Indigo light - cluster indicator
   Process: '#f43f5e',    // Rose - execution flow indicator
+  Contributor: '#22c55e', // Green - contributor nodes
+  FileContribution: '#84cc16', // Lime - per-file contribution
 };
 
 // Node sizes by type - clear visual hierarchy with dramatic size differences
@@ -41,6 +43,8 @@ export const NODE_SIZES: Record<NodeLabel, number> = {
   CodeElement: 2,  // Generic small
   Community: 0,    // Hidden by default - metadata node
   Process: 0,      // Hidden by default - metadata node
+  Contributor: 6,  // Similar prominence to File
+  FileContribution: 2, // Small leaf node
 };
 
 // Community color palette for cluster-based coloring
@@ -76,6 +80,7 @@ export const DEFAULT_VISIBLE_LABELS: NodeLabel[] = [
   'Interface',
   'Enum',
   'Type',
+  'Contributor',
 ];
 
 // All filterable labels
@@ -88,10 +93,12 @@ export const FILTERABLE_LABELS: NodeLabel[] = [
   'Variable',
   'Interface',
   'Import',
+  'Contributor',
+  'FileContribution',
 ];
 
 // Edge/Relation types
-export type EdgeType = 'CONTAINS' | 'DEFINES' | 'IMPORTS' | 'CALLS' | 'EXTENDS' | 'IMPLEMENTS';
+export type EdgeType = 'CONTAINS' | 'DEFINES' | 'IMPORTS' | 'CALLS' | 'EXTENDS' | 'IMPLEMENTS' | 'CONTRIBUTED_TO';
 
 export const ALL_EDGE_TYPES: EdgeType[] = [
   'CONTAINS',
@@ -100,6 +107,7 @@ export const ALL_EDGE_TYPES: EdgeType[] = [
   'CALLS',
   'EXTENDS',
   'IMPLEMENTS',
+  'CONTRIBUTED_TO',
 ];
 
 // Default visible edges (CALLS hidden by default to reduce clutter)
@@ -110,6 +118,7 @@ export const DEFAULT_VISIBLE_EDGES: EdgeType[] = [
   'EXTENDS',
   'IMPLEMENTS',
   'CALLS',
+  'CONTRIBUTED_TO',
 ];
 
 // Edge display info for UI
@@ -120,4 +129,5 @@ export const EDGE_INFO: Record<EdgeType, { color: string; label: string }> = {
   CALLS: { color: '#7c3aed', label: 'Calls' },
   EXTENDS: { color: '#c2410c', label: 'Extends' },
   IMPLEMENTS: { color: '#be185d', label: 'Implements' },
+  CONTRIBUTED_TO: { color: '#16a34a', label: 'Contributed to' },
 };
