@@ -13,6 +13,7 @@ import { queryCommand, contextCommand, impactCommand, cypherCommand } from './to
 import { evalServerCommand } from './eval-server.js';
 import { githubLoginCommand, githubScanCommand } from './github.js';
 import { keysCreateCommand, keysListCommand } from './keys.js';
+import { reportCommand } from './report.js';
 const program = new Command();
 
 program
@@ -91,6 +92,16 @@ github
   .option('--token <token>', 'GitHub PAT (optional)')
   .option('-f, --force', 'Force re-index even if up to date')
   .action(githubScanCommand);
+
+// ─── Remote Report Command ───────────────────────────────────────
+program
+  .command('report <target>')
+  .description('Clone remote repo, analyze it, generate detailed MD report, and cleanup')
+  .option('-o, --output <dir>', 'Output directory for the report')
+  .option('--token <token>', 'GitHub PAT for private repos (or set GITHUB_TOKEN)')
+  .option('--code', 'Include code snippets in the report')
+  .option('--keep', 'Keep the cloned repository (do not delete after analysis)')
+  .action(reportCommand);
 
 // ─── API Keys ─────────────────────────────────────────────────────
 const keys = program

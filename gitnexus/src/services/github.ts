@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { Octokit } from '@octokit/rest';
-import simpleGit from 'simple-git';
+import { simpleGit, SimpleGit } from 'simple-git';
 import { v4 as uuidv4 } from 'uuid';
 import { getGlobalDir } from '../storage/repo-manager.js';
 import { getGitHubCredential, GitHubCredentialType } from '../storage/api-keys.js';
@@ -118,11 +118,11 @@ const cloneOrUpdateRepo = async (repo: GitHubRepo, token?: string): Promise<stri
 
   try {
     await fs.access(gitDir);
-    const git = simpleGit({ baseDir: repoDir });
+    const git: SimpleGit = simpleGit(repoDir);
     await git.fetch(['--prune']);
     await git.pull();
   } catch {
-    const git = simpleGit();
+    const git: SimpleGit = simpleGit();
     await git.clone(authUrl, repoDir, ['--depth', '1']);
   }
 
