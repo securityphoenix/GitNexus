@@ -36,6 +36,15 @@ For any task involving code understanding, debugging, impact analysis, or refact
 | `cypher` | Raw graph queries (read `gitnexus://repo/{name}/schema` first) |
 | `list_repos` | Discover indexed repos |
 
+## CLI Commands
+
+| Command | What it does |
+|---------|--------------|
+| `gitnexus analyze` | Index current repo into knowledge graph |
+| `gitnexus report <repo>` | Generate detailed MD report for any GitHub repo (clones, analyzes, deletes) |
+| `gitnexus wiki` | Generate LLM-powered documentation from knowledge graph |
+| `gitnexus serve` | Start HTTP server for web UI connection |
+
 ## Resources Reference
 
 Lightweight reads (~100-500 tokens) for navigation:

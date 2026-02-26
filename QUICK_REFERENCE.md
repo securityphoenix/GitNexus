@@ -59,6 +59,7 @@ gitnexus setup
 | `gitnexus serve` | Start HTTP server |
 | `gitnexus clean` | Delete current index |
 | `gitnexus wiki` | Generate documentation |
+| `gitnexus report <repo>` | Generate detailed MD report |
 
 ---
 
@@ -422,6 +423,80 @@ npm run dev
 ```
 
 See [QUICKSTART.md](./QUICKSTART.md) for more details.
+
+---
+
+## Report Command (Remote Analysis)
+
+Generate a comprehensive markdown report for any GitHub repository without keeping the code locally.
+
+### Basic Usage
+
+```bash
+# Analyze a public repo
+gitnexus report owner/repo
+
+# Analyze a private repo
+gitnexus report owner/repo --token ghp_xxx
+# Or set GITHUB_TOKEN environment variable
+
+# Custom output directory
+gitnexus report owner/repo --output ./reports
+
+# Include code snippets in report
+gitnexus report owner/repo --code
+
+# Keep cloned repo after analysis
+gitnexus report owner/repo --keep
+```
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--output, -o` | Output directory (default: `./gitnexus-reports`) |
+| `--token, -t` | GitHub token for private repos |
+| `--code` | Include code snippets in report |
+| `--keep` | Keep cloned repo after analysis |
+
+### Report Contents
+
+The generated markdown report includes:
+
+- **Overview**: Repository description, stars, forks, license
+- **Languages**: Breakdown by language with percentages
+- **Directory Structure**: Tree view of the codebase
+- **Main Files**: Key files with descriptions
+- **Dependencies**: Package dependencies with versions
+- **Docker Configuration**: Dockerfiles, compose files, images
+- **Documentation**: README, docs, API references
+- **Code Analysis**: Clusters, processes, execution flows
+- **Security Analysis**: Sensitive files, secrets patterns, hotspots
+- **Docker Deep Dive**: Layers, stages, base images, security config
+- **Ownership**: Contributors, blame data, change hotspots
+- **Call Graph**: Entry points, dependency usage
+- **Vulnerability Context**: Applicability rules, mitigating factors
+
+### Examples
+
+```bash
+# Quick analysis of a public repo
+gitnexus report facebook/react
+
+# Full analysis with code for LLM context
+gitnexus report my-org/private-api --token $GITHUB_TOKEN --code
+
+# CI/CD pipeline usage
+gitnexus report $REPO_SLUG --output ./artifacts --code
+```
+
+### Output
+
+Reports are saved as timestamped markdown files:
+```
+gitnexus-reports/
+└── owner-repo-2024-01-15T10-30-00.md
+```
 
 ---
 

@@ -27,7 +27,19 @@ import {
   ClusterInfo,
   ProcessInfo,
   ReportGeneratorOptions,
+  SecurityAnalysisInfo,
+  DockerDeepDiveInfo,
+  OwnershipInfo,
+  CallGraphInfo,
+  VulnerabilityContextInfo,
 } from '../types/report.js';
+import {
+  analyzeSecurityInfo,
+  analyzeDockerDeep,
+  analyzeOwnership,
+  buildCallGraphInfo,
+  buildVulnerabilityContext,
+} from './security-analyzer.js';
 
 const LANGUAGE_EXTENSIONS: Record<string, string[]> = {
   TypeScript: ['.ts', '.tsx', '.mts', '.cts'],
@@ -620,8 +632,34 @@ export const generateReport = async (
     
     await closeKuzu();
     
+    // Security analysis
+    progress('Running security analysis...', 96);
+    const securityAnalysis = await analyzeSecurityInfo(repoPath, pipelineResult.fileContents);
+    
+    // Docker deep dive
+    progress('Analyzing Docker configuration in depth...', 97);
+    const dockerDeepDive = await analyzeDockerDeep(repoPath, pipelineResult.fileContents);
+    
+    // Ownership analysis
+    progress('Analyzing code ownership...', 98);
+    const ownership = await analyzeOwnership(repoPath, pipelineResult.fileContents);
+    
+    // Call graph
+    const callGraph = await buildCallGraphInfo(
+      pipelineResult.fileContents,
+      pipelineResult.graph.nodes,
+      pipelineResult.graph.relationships
+    );
+    
+    // Vulnerability context
+    const vulnerabilityContext = await buildVulnerabilityContext(
+      dependencies,
+      callGraph,
+      dockerDeepDive
+    );
+    
     // Build report
-    progress('Building report...', 98);
+    progress('Building report...', 99);
     const timestamp = new Date().toISOString();
     
     const report: RepoReport = {
@@ -656,6 +694,11 @@ export const generateReport = async (
       docker,
       documentation,
       codeAnalysis,
+      securityAnalysis,
+      dockerDeepDive,
+      ownership,
+      callGraph,
+      vulnerabilityContext,
       generatedAt: timestamp,
     };
     
@@ -692,7 +735,7 @@ export const generateReport = async (
 
 const generateMarkdown = (report: RepoReport, includeCode: boolean): string => {
   const lines: string[] = [];
-  const { metadata, overview, languages, structure, mainFiles, dependencies, docker, documentation, codeAnalysis } = report;
+  const { metadata, overview, languages, structure, mainFiles, dependencies, docker, documentation, codeAnalysis, securityAnalysis, dockerDeepDive, ownership, callGraph, vulnerabilityContext } = report;
   
   // Header
   lines.push(`# Repository Analysis Report: ${metadata.owner}/${metadata.repoName}`);
@@ -709,8 +752,13 @@ const generateMarkdown = (report: RepoReport, includeCode: boolean): string => {
   lines.push('- [Main Files](#main-files)');
   lines.push('- [Dependencies](#dependencies)');
   if (docker) lines.push('- [Docker Configuration](#docker-configuration)');
+  if (dockerDeepDive) lines.push('- [Docker Deep Dive](#docker-deep-dive)');
   lines.push('- [Documentation](#documentation)');
   lines.push('- [Code Analysis](#code-analysis)');
+  lines.push('- [Security Analysis](#security-analysis)');
+  lines.push('- [Code Ownership](#code-ownership)');
+  lines.push('- [Call Graph](#call-graph)');
+  lines.push('- [Vulnerability Context](#vulnerability-context)');
   lines.push('- [Metadata](#metadata)');
   lines.push('');
   
@@ -956,6 +1004,321 @@ const generateMarkdown = (report: RepoReport, includeCode: boolean): string => {
     lines.push('|------|------|-------|');
     for (const proc of codeAnalysis.topProcesses) {
       lines.push(`| ${proc.name} | ${proc.type} | ${proc.steps} |`);
+    }
+    lines.push('');
+  }
+  
+  // Security Analysis
+  lines.push('---');
+  lines.push('');
+  lines.push('## Security Analysis');
+  lines.push('');
+  
+  if (securityAnalysis.sensitiveFiles.length > 0) {
+    lines.push('### Sensitive Files');
+    lines.push('');
+    lines.push('| File | Type | Risk | In .gitignore | In .dockerignore |');
+    lines.push('|------|------|------|---------------|------------------|');
+    for (const sf of securityAnalysis.sensitiveFiles.slice(0, 20)) {
+      const gitignore = sf.inGitignore ? '✅' : '❌';
+      const dockerignore = sf.inDockerignore ? '✅' : '❌';
+      const risk = sf.risk === 'critical' ? '🔴 Critical' : sf.risk === 'high' ? '🟠 High' : sf.risk === 'medium' ? '🟡 Medium' : '🟢 Low';
+      lines.push(`| \`${sf.path}\` | ${sf.type} | ${risk} | ${gitignore} | ${dockerignore} |`);
+    }
+    lines.push('');
+  }
+  
+  if (securityAnalysis.secretPatterns.length > 0) {
+    lines.push('### Potential Secrets Detected');
+    lines.push('');
+    lines.push('⚠️ **Warning:** The following patterns may indicate hardcoded secrets:');
+    lines.push('');
+    lines.push('| File | Line | Type | Pattern |');
+    lines.push('|------|------|------|---------|');
+    for (const sp of securityAnalysis.secretPatterns.slice(0, 15)) {
+      lines.push(`| \`${sp.path}\` | ${sp.line} | ${sp.type} | ${sp.masked} |`);
+    }
+    lines.push('');
+  }
+  
+  if (securityAnalysis.securityHotspots.length > 0) {
+    lines.push('### Security Hotspots');
+    lines.push('');
+    lines.push('| File | Type | Severity | Description |');
+    lines.push('|------|------|----------|-------------|');
+    for (const sh of securityAnalysis.securityHotspots.slice(0, 15)) {
+      const severity = sh.severity === 'critical' ? '🔴' : sh.severity === 'high' ? '🟠' : sh.severity === 'medium' ? '🟡' : '🟢';
+      lines.push(`| \`${sh.path}:${sh.line}\` | ${sh.type} | ${severity} ${sh.severity} | ${sh.description} |`);
+    }
+    lines.push('');
+  }
+  
+  if (securityAnalysis.todoFixmeComments.length > 0) {
+    lines.push('### TODO/FIXME Comments');
+    lines.push('');
+    lines.push('Technical debt and known issues:');
+    lines.push('');
+    lines.push('| File | Line | Type | Content |');
+    lines.push('|------|------|------|---------|');
+    for (const comment of securityAnalysis.todoFixmeComments.slice(0, 20)) {
+      lines.push(`| \`${comment.path}\` | ${comment.line} | ${comment.type} | ${comment.content.slice(0, 50)}${comment.content.length > 50 ? '...' : ''} |`);
+    }
+    lines.push('');
+  }
+  
+  if (securityAnalysis.apiEndpoints.length > 0) {
+    lines.push('### API Endpoints');
+    lines.push('');
+    lines.push('| Method | Route | File | Has Auth | Has Validation |');
+    lines.push('|--------|-------|------|----------|----------------|');
+    for (const ep of securityAnalysis.apiEndpoints.slice(0, 20)) {
+      const auth = ep.hasAuth ? '✅' : '❌';
+      const validation = ep.hasValidation ? '✅' : '❌';
+      lines.push(`| ${ep.method} | \`${ep.route}\` | \`${ep.file}:${ep.line}\` | ${auth} | ${validation} |`);
+    }
+    lines.push('');
+  }
+  
+  // Docker Deep Dive
+  if (dockerDeepDive) {
+    lines.push('---');
+    lines.push('');
+    lines.push('## Docker Deep Dive');
+    lines.push('');
+    
+    if (dockerDeepDive.dockerfiles.length > 0) {
+      lines.push('### Dockerfile Analysis');
+      lines.push('');
+      
+      for (const df of dockerDeepDive.dockerfiles) {
+        lines.push(`#### ${df.path}`);
+        lines.push('');
+        lines.push(`- **Base Image:** \`${df.baseImage.fullName}\``);
+        lines.push(`- **Registry:** ${df.baseImage.registry}`);
+        lines.push(`- **Stages:** ${df.stages.length}`);
+        lines.push(`- **Layers:** ${df.layers.length}`);
+        lines.push(`- **User:** ${df.user || 'root (default)'}`);
+        lines.push(`- **Workdir:** ${df.workdir}`);
+        lines.push('');
+        
+        if (df.exposedPorts.length > 0) {
+          lines.push('**Exposed Ports:**');
+          for (const port of df.exposedPorts) {
+            lines.push(`- ${port.port}/${port.protocol}`);
+          }
+          lines.push('');
+        }
+        
+        if (df.installedPackages.length > 0) {
+          lines.push('**Installed Packages:**');
+          lines.push('');
+          lines.push('| Package | Manager | Layer |');
+          lines.push('|---------|---------|-------|');
+          for (const pkg of df.installedPackages.slice(0, 20)) {
+            lines.push(`| ${pkg.name} | ${pkg.manager} | ${pkg.layer} |`);
+          }
+          lines.push('');
+        }
+        
+        if (df.copiedFiles.length > 0) {
+          lines.push('**Files Copied to Container:**');
+          lines.push('');
+          lines.push('| Source | Destination | Repo Files |');
+          lines.push('|--------|-------------|------------|');
+          for (const cf of df.copiedFiles.slice(0, 15)) {
+            lines.push(`| ${cf.source} | ${cf.destination} | ${cf.repoFiles.length} files |`);
+          }
+          lines.push('');
+        }
+        
+        if (df.envVars.length > 0) {
+          lines.push('**Environment Variables:**');
+          lines.push('');
+          lines.push('| Variable | Sensitive |');
+          lines.push('|----------|-----------|');
+          for (const env of df.envVars) {
+            const sensitive = env.isSensitive ? '⚠️ Yes' : 'No';
+            lines.push(`| ${env.name} | ${sensitive} |`);
+          }
+          lines.push('');
+        }
+      }
+    }
+    
+    if (dockerDeepDive.containerFileMapping.length > 0) {
+      lines.push('### Container File Mapping');
+      lines.push('');
+      lines.push('Which repo files end up in which containers:');
+      lines.push('');
+      lines.push('| Repo File | Container | Path in Container | Layer |');
+      lines.push('|-----------|-----------|-------------------|-------|');
+      for (const mapping of dockerDeepDive.containerFileMapping.slice(0, 30)) {
+        for (const dest of mapping.containers) {
+          lines.push(`| \`${mapping.repoFile}\` | ${dest.service} | ${dest.containerPath} | ${dest.layer} |`);
+        }
+      }
+      lines.push('');
+    }
+    
+    if (dockerDeepDive.securityConfig) {
+      lines.push('### Docker Security Configuration');
+      lines.push('');
+      
+      if (dockerDeepDive.securityConfig.privilegedContainers.length > 0) {
+        lines.push('⚠️ **Privileged Containers:** ' + dockerDeepDive.securityConfig.privilegedContainers.join(', '));
+        lines.push('');
+      }
+      
+      if (dockerDeepDive.securityConfig.rootContainers.length > 0) {
+        lines.push('⚠️ **Containers Running as Root:** ' + dockerDeepDive.securityConfig.rootContainers.join(', '));
+        lines.push('');
+      }
+      
+      if (dockerDeepDive.securityConfig.missingSecurityFeatures.length > 0) {
+        lines.push('**Missing Security Features:**');
+        lines.push('');
+        lines.push('| Service | Feature | Recommendation |');
+        lines.push('|---------|---------|----------------|');
+        for (const msf of dockerDeepDive.securityConfig.missingSecurityFeatures) {
+          lines.push(`| ${msf.service} | ${msf.feature} | ${msf.recommendation} |`);
+        }
+        lines.push('');
+      }
+    }
+    
+    if (dockerDeepDive.layerAnalysis.length > 0) {
+      for (const la of dockerDeepDive.layerAnalysis) {
+        if (la.optimizationSuggestions.length > 0) {
+          lines.push(`### Optimization Suggestions for ${la.dockerfile}`);
+          lines.push('');
+          for (const suggestion of la.optimizationSuggestions) {
+            lines.push(`- ${suggestion}`);
+          }
+          lines.push('');
+        }
+      }
+    }
+  }
+  
+  // Code Ownership
+  lines.push('---');
+  lines.push('');
+  lines.push('## Code Ownership');
+  lines.push('');
+  
+  if (ownership.contributors.length > 0) {
+    lines.push('### Top Contributors');
+    lines.push('');
+    lines.push('| Contributor | Commits | First Commit | Last Commit | Active |');
+    lines.push('|-------------|---------|--------------|-------------|--------|');
+    for (const c of ownership.contributors.slice(0, 15)) {
+      const active = c.isActive ? '✅' : '❌';
+      const firstDate = new Date(c.firstCommit).toLocaleDateString();
+      const lastDate = new Date(c.lastCommit).toLocaleDateString();
+      lines.push(`| ${c.name} | ${c.commits} | ${firstDate} | ${lastDate} | ${active} |`);
+    }
+    lines.push('');
+  }
+  
+  if (ownership.hotspots.length > 0) {
+    lines.push('### Change Hotspots (High Churn Files)');
+    lines.push('');
+    lines.push('Files with frequent changes may indicate instability or complexity:');
+    lines.push('');
+    lines.push('| File | Changes | Contributors | Bug Fixes | Risk Score |');
+    lines.push('|------|---------|--------------|-----------|------------|');
+    for (const hs of ownership.hotspots.slice(0, 15)) {
+      const risk = hs.riskScore > 70 ? '🔴' : hs.riskScore > 40 ? '🟡' : '🟢';
+      lines.push(`| \`${hs.path}\` | ${hs.changeFrequency} | ${hs.uniqueContributors} | ${hs.bugFixCommits} | ${risk} ${hs.riskScore} |`);
+    }
+    lines.push('');
+  }
+  
+  if (ownership.recentChanges.length > 0) {
+    lines.push('### Recent Changes');
+    lines.push('');
+    lines.push('| Date | Author | Message | Bug Fix | Security |');
+    lines.push('|------|--------|---------|---------|----------|');
+    for (const rc of ownership.recentChanges.slice(0, 15)) {
+      const date = new Date(rc.date).toLocaleDateString();
+      const bugFix = rc.isBugFix ? '🐛' : '';
+      const security = rc.isSecurityRelated ? '🔒' : '';
+      lines.push(`| ${date} | ${rc.author} | ${rc.message.slice(0, 40)}${rc.message.length > 40 ? '...' : ''} | ${bugFix} | ${security} |`);
+    }
+    lines.push('');
+  }
+  
+  if (ownership.codeAge.staleFiles.length > 0) {
+    lines.push('### Stale Files (Not Modified in 1+ Year)');
+    lines.push('');
+    for (const sf of ownership.codeAge.staleFiles.slice(0, 10)) {
+      lines.push(`- \`${sf}\``);
+    }
+    lines.push('');
+  }
+  
+  // Call Graph
+  lines.push('---');
+  lines.push('');
+  lines.push('## Call Graph');
+  lines.push('');
+  
+  if (callGraph.entryPoints.length > 0) {
+    lines.push('### Entry Points');
+    lines.push('');
+    lines.push('| Symbol | Type | Reachable Nodes |');
+    lines.push('|--------|------|-----------------|');
+    for (const ep of callGraph.entryPoints.slice(0, 15)) {
+      lines.push(`| ${ep.nodeId.split(':').pop()} | ${ep.type} | ${ep.reachableNodes} |`);
+    }
+    lines.push('');
+  }
+  
+  lines.push(`**Total Nodes:** ${callGraph.nodes.length}`);
+  lines.push('');
+  lines.push(`**Total Edges:** ${callGraph.edges.length}`);
+  lines.push('');
+  
+  // Vulnerability Context
+  lines.push('---');
+  lines.push('');
+  lines.push('## Vulnerability Context');
+  lines.push('');
+  lines.push('This section provides context for vulnerability triage and applicability analysis.');
+  lines.push('');
+  
+  if (vulnerabilityContext.applicabilityRules.length > 0) {
+    lines.push('### Applicability Rules');
+    lines.push('');
+    lines.push('Rules that can reduce vulnerability severity based on context:');
+    lines.push('');
+    lines.push('| Rule | Applies To | Effect |');
+    lines.push('|------|------------|--------|');
+    for (const rule of vulnerabilityContext.applicabilityRules) {
+      lines.push(`| ${rule.name} | ${rule.appliesTo} | ${rule.reduces ? 'Reduces severity' : 'Increases severity'} |`);
+    }
+    lines.push('');
+  }
+  
+  if (vulnerabilityContext.mitigatingFactors.length > 0) {
+    lines.push('### Mitigating Factors');
+    lines.push('');
+    for (const mf of vulnerabilityContext.mitigatingFactors) {
+      lines.push(`- **${mf.type}:** ${mf.description}`);
+    }
+    lines.push('');
+  }
+  
+  if (vulnerabilityContext.attackSurface.exposedPorts.length > 0) {
+    lines.push('### Attack Surface - Exposed Ports');
+    lines.push('');
+    lines.push('| Port | Protocol | Service | Container | Public | Auth | TLS |');
+    lines.push('|------|----------|---------|-----------|--------|------|-----|');
+    for (const port of vulnerabilityContext.attackSurface.exposedPorts) {
+      const pub = port.isPublic ? '✅' : '❌';
+      const auth = port.hasAuth ? '✅' : '❌';
+      const tls = port.hasTls ? '✅' : '❌';
+      lines.push(`| ${port.port} | ${port.protocol} | ${port.service} | ${port.container || '-'} | ${pub} | ${auth} | ${tls} |`);
     }
     lines.push('');
   }

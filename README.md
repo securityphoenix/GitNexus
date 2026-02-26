@@ -128,6 +128,9 @@ gitnexus clean --all --force     # Delete all indexes
 gitnexus wiki [path]             # Generate repository wiki from knowledge graph
 gitnexus wiki --model <model>    # Wiki with custom LLM model (default: gpt-4o-mini)
 gitnexus wiki --base-url <url>   # Wiki with custom LLM API base URL
+gitnexus report <owner/repo>     # Generate detailed MD report for any GitHub repo
+gitnexus report <url> --output . # Report with custom output directory
+gitnexus report <repo> --token x # Report for private repos (or set GITHUB_TOKEN)
 ```
 
 ### What Your AI Agent Gets
