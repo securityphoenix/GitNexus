@@ -365,7 +365,7 @@ export const RightPanel = () => {
                           {/* Render steps in order (reasoning, tool calls, content interleaved) */}
                           {message.steps && message.steps.length > 0 ? (
                             <div className="space-y-4">
-                              {message.steps.map((step) => (
+                              {message.steps.map((step, index) => (
                                 <div key={step.id}>
                                   {step.type === 'reasoning' && step.content && (
                                     <div className="text-text-secondary text-sm italic border-l-2 border-text-muted/30 pl-3 mb-3">
@@ -384,6 +384,7 @@ export const RightPanel = () => {
                                     <MarkdownRenderer
                                       content={step.content}
                                       onLinkClick={handleLinkClick}
+                                      showCopyButton={index === message.steps!.length - 1}
                                     />
                                   )}
                                 </div>
@@ -395,6 +396,7 @@ export const RightPanel = () => {
                               content={message.content}
                               onLinkClick={handleLinkClick}
                               toolCalls={message.toolCalls}
+                              showCopyButton={true}
                             />
                           )}
                         </div>
